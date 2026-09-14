@@ -2,27 +2,25 @@ import streamlit as st
 import math
 import random
 
-# 页面基本配置
-st.set_page_config(page_title="Master Duel 卡组动点与展开助手", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="MD 烙印展开助手", layout="wide", initial_sidebar_state="expanded")
 
-st.title("🃏 Master Duel 动点概率与展开路线助手")
+st.title("🃏 Master Duel 烙印精准动点与展开助手")
 
-tab1, tab2, tab3 = st.tabs(["📊 动点概率计算", "🎲 起手模拟抽牌", "📖 Combo 展开路线"])
+tab1, tab2, tab3 = st.tabs(["📊 动点概率计算", "🎲 起手模拟抽牌", "🔍 烙印 Combo 动态检索器"])
 
-# --- TAB 1: 超几何分布动点概率计算 ---
+# --- TAB 1: 概率计算器 ---
 with tab1:
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("⚙️ 卡组构成参数")
-        deck_size = st.number_input("卡组总张数 (N)", value=40, min_value=40, max_value=60, step=1)
-        hand_size = st.radio("先手 / 后手抽牌数 (n)", [5, 6], format_func=lambda x: f"先手 ({x}张)" if x == 5 else f"后手 ({x}张)")
-        starters = st.slider("初动点张数 (K1)", 1, 20, 6)
-        handtraps = st.slider("手坑/拦截张数 (K2)", 0, 20, 9)
-        bricks = st.slider("废件/卡手物 (K3)", 0, 10, 2)
+        st.subheader("⚙️ 卡组参数配置")
+        deck_size = st.number_input("卡组总张数", value=40, min_value=40, max_value=60, step=1)
+        hand_size = st.radio("先后手", [5, 6], format_func=lambda x: f"先手 ({x}张)" if x == 5 else f"后手 ({x}张)")
+        starters = st.slider("初动点张数 (烙融/阿鲁伯/开幕等)", 1, 20, 8)
+        handtraps = st.slider("手坑/拦截张数", 0, 20, 9)
+        bricks = st.slider("废件/上手难受卡牌", 0, 10, 2)
 
     with col2:
-        st.subheader("📈 概率分析结果")
-        
+        st.subheader("📈 起手概率分析")
         def calc_prob(k, n=hand_size, N=deck_size):
             if k <= 0: return 0.0
             if k > N: return 100.0
@@ -31,37 +29,27 @@ with tab1:
 
         p_starter = calc_prob(starters)
         p_ht = calc_prob(handtraps)
-        p_brick_only = (math.comb(bricks, hand_size) / math.comb(deck_size, hand_size) * 100) if bricks >= hand_size else 0.0
 
-        st.metric("起手拿到【至少 1 张动点】概率", f"{p_starter:.2f}%")
-        st.metric("起手拿到【至少 1 张手坑】概率", f"{p_ht:.2f}%")
+        st.metric("起手【至少 1 张初动】概率", f"{p_starter:.2f}%")
+        st.metric("起手【至少 1 张手坑】概率", f"{p_ht:.2f}%")
         st.metric("理想起手 (动点 + 手坑同时上手)", f"{(p_starter / 100 * p_ht / 100) * 100:.2f}%")
-        
-        if bricks > 0:
-            st.caption(f"⚠️ 极端卡手（起手全废件）概率: {p_brick_only:.4f}%")
 
-# --- TAB 2: 手牌模拟试抽 ---
+# --- TAB 2: 起手抽牌模拟 ---
 with tab2:
-    st.subheader("🎲 5 张起手牌模拟抽样")
+    st.subheader("🎲 5 张起手模拟抽样")
     if st.button("🎴 点击洗牌并抽取起手", type="primary"):
-        # 构建卡组列表
         deck = (["动点"] * starters) + (["手坑"] * handtraps) + (["废件"] * bricks)
         remaining = max(0, deck_size - len(deck))
         deck += ["普通卡"] * remaining
         
-        # 随机抽取
         hand = random.sample(deck, hand_size)
         cols = st.columns(hand_size)
         
         for i, card in enumerate(hand):
-            if card == "动点":
-                color_code, emoji = "🟢", "【初动】"
-            elif card == "手坑":
-                color_code, emoji = "🔵", "【手坑】"
-            elif card == "废件":
-                color_code, emoji = "🔴", "【废件】"
-            else:
-                color_code, emoji = "⚪", "【自由位】"
+            if card == "动点": color_code, emoji = "🟢", "【初动】"
+            elif card == "手坑": color_code, emoji = "🔵", "【手坑】"
+            elif card == "废件": color_code, emoji = "🔴", "【废件】"
+            else: color_code, emoji = "⚪", "【自由位】"
                 
             cols[i].metric(f"卡牌 {i+1}", f"{color_code} {card}", delta=emoji)
             
@@ -69,52 +57,94 @@ with tab2:
         if "动点" in hand:
             st.success("✅ 手牌通过！具备展开动点。")
         else:
-            st.error("❌ 发生事故！手牌无动点，建议妥协或过牌。")
+            st.error("❌ 发生事故！手牌无动点。")
 
-# --- TAB 3: Combo 数据库 ---
+# --- TAB 3: 输入卡牌精准提示展开链 ---
 with tab3:
-    st.subheader("📚 卡组展开与妥协路线图")
-    
-    COMBO_DATA = {
-        "烙印 (Branded)": {
-            "单卡: 烙印融合": [
-                "1. 发动【烙印融合】送墓【阿不思的落胤】+【深渊之兽 鲁贝利乌斯】融合召唤【神炎龙 鲁贝利乌斯】",
-                "2. 发动【神炎龙】效果弃 1 手牌，将墓地【阿不思】与【神炎龙】洗回卡组，融合召唤【冰剑龙 赫界龙】",
-                "3. 墓地【深渊之兽 鲁贝利乌斯】解放场上神炎龙特召，发动效果表侧置放卡组【烙印之兽】",
-                "4. 结束阶段（End Phase）触发墓地烙印龙效果，盖放【赫之烙印】",
-                "5. 终场：冰剑龙(非取对象除外) + 烙印之兽(解场/炸卡) + 盖放赫之烙印"
-            ],
-            "单卡: 阿鲁伯起手": [
-                "1. 通常召唤【导圣者 阿鲁伯】，发动效果检索【烙印融合】",
-                "2. 接【单卡: 烙印融合】主展开链..."
-            ],
-            "妥协: 烙印融合中 Maxx 'C' (妥协给对方抽 1-2 张)": [
-                "1. 发动【烙印融合】送墓【阿不思】+【赫圣女】融合召唤【痕食龙】或【烙印龙】",
-                "2. 场上留【痕食龙】/【冰剑龙】后立即过牌停手，避免给对手送过多手牌",
-                "3. 结束阶段（End Phase）墓地烙印龙效果，直接在场上盖放【赫之烙印】或【烙印的追放】",
-                "4. 对手回合发动【赫之烙印】，回收墓地资源融出【守护者·奇美拉】进行解场与抽牌"
+    st.subheader("🎴 烙印卡组按卡提示展开流程")
+    st.caption("输入或选择你手牌中的启动卡，下方将按顺序提示严格的展开步骤：")
+
+    # 经典烙印卡组精准展开数据库
+    BRANDED_DATABASE = [
+        {
+            "card_names": ["烙印融合", "Branded Fusion"],
+            "title": "【单卡动点】烙印融合 (标准深渊之兽轴主线)",
+            "required_hand": "【烙印融合】1 张 + 任意手牌 1 张 (作神炎龙 cost)",
+            "steps": [
+                "步骤 1：发动【烙印融合】，从卡组将【阿不思的落胤】与【深渊之兽 鲁贝利乌斯】作为素材送去墓地，融合召唤【神炎龙 鲁贝利乌斯】。",
+                "步骤 2：触发【神炎龙】效果，弃置 1 张手牌，将其自身与墓地的【阿不思的落胤】洗回卡组，融合召唤【冰剑龙 赫界龙】。",
+                "步骤 3：发动墓地【深渊之兽 鲁贝利乌斯】效果，解放场上的【神炎龙】将其特殊召唤到场上。",
+                "步骤 4：发动场上【深渊之兽 鲁贝利乌斯】效果，从卡组将【烙印之兽】表侧放置到魔陷区。",
+                "步骤 5：进入结束阶段（End Phase），触发墓地【烙印龙 阿尔比昂】（或冰剑龙堆墓的烙印龙）效果，在场上盖放【赫之烙印】。",
+                "🎯 最终终场：冰剑龙（二速非取对象除外） + 烙印之兽（解放场上龙族解场） + 盖放赫之烙印（对方回合融奇美拉/赫焉龙）。"
             ]
         },
-        "蛇眼 (Snake-Eye)": {
-            "单卡: 篝火/蛇眼小火": [
-                "1. 发动【篝火】检索【蛇眼小火】并通常召唤",
-                "2. 发动小火效果将【原罪宝】置入魔陷区，小火送墓【原罪宝】特召【蛇眼大火】",
-                "3. 大火效果拉墓地小火，两体拉【I:P伪装舞会】...",
-                "4. 终场：神弓(3康) + I:P伪装舞会 + 墓地咎姬"
+        {
+            "card_names": ["阿鲁伯", "导圣者 阿鲁伯", "导圣者"],
+            "title": "【单卡动点】导圣者 阿鲁伯 (通召起手)",
+            "required_hand": "【导圣者 阿鲁伯】1 张",
+            "steps": [
+                "步骤 1：通常召唤【导圣者 阿鲁伯】，发动效果从卡组检索【烙印融合】。",
+                "步骤 2：发动【烙印融合】，从卡组将【阿不思的落胤】与【深渊之兽 鲁贝利乌斯】送墓融合【神炎龙】。",
+                "步骤 3：【神炎龙】弃 1 手牌洗回阿不思与自身，融合召唤【冰剑龙 赫界龙】。",
+                "步骤 4：墓地【深渊之兽 鲁贝利乌斯】解放场上的【阿鲁伯】特殊召唤，卡组表侧置放【烙印之兽】。",
+                "步骤 5：结束阶段（End Phase）墓地烙印龙效果，盖放【赫之烙印】。",
+                "🎯 最终终场：冰剑龙 + 烙印之兽 + 盖放赫之烙印。"
             ]
         },
-        "白银城 (Labrynth)": {
-            "两卡: 家具 + 任意手牌": [
-                "1. 丢弃【白银城家具】与 1 张手牌，从卡组盖放【大欢迎白银城】",
-                "2. 对方回合发动【大欢迎】，特召【大姐/白银城主】，弹回大姐或家具触发解场连锁"
+        {
+            "card_names": ["烙印开幕", "开幕"],
+            "title": "【单卡动点】烙印开幕 (二速/防手坑起手)",
+            "required_hand": "【烙印开幕】1 张 + 任意手牌 1 张 (开幕 cost)",
+            "steps": [
+                "步骤 1：发动速攻魔法【烙印开幕】，弃置 1 张手牌，从卡组守备表示特殊召唤【导圣者 阿鲁伯】。",
+                "步骤 2：触发【阿鲁伯】效果，从卡组检索【烙印融合】。",
+                "步骤 3：发动【烙印融合】，后续顺次接入【烙印融合标准主线】展开流程。"
+            ]
+        },
+        {
+            "card_names": ["绝望之悲剧", "悲剧"],
+            "title": "【配合动点】绝望之悲剧 (被送墓/弃置检索)",
+            "required_hand": "【绝望之悲剧】（作为烙印开幕/神炎龙/愚蠢的副葬等效果 cost 送墓时）",
+            "steps": [
+                "步骤 1：【绝望之悲剧】被效果送去墓地或被除外时，触发 C1 强制/诱发效果。",
+                "步骤 2：从卡组检索【导圣者 阿鲁伯】或【绝望之大剧场】到手牌。",
+                "步骤 3：若尚未通召，通常召唤检索到的【阿鲁伯】继续检索【烙印融合】进行展开。"
+            ]
+        },
+        {
+            "card_names": ["赫圣女", "卡尔特西亚", "赫圣女 卡尔特西亚"],
+            "title": "【补点/展开】赫圣女 卡尔特西亚",
+            "required_hand": "【赫圣女 卡尔特西亚】1 张 + 场上/墓地有【阿不思的落胤】",
+            "steps": [
+                "步骤 1：若墓地或场上有【阿不思】，发动【赫圣女】手牌效果将其特殊召唤。",
+                "步骤 2：主要阶段发动【赫圣女】二速效果，将场上的赫圣女与手牌/场上的【阿不思】（或暗属性怪兽）融合召唤【赫焉龙 圣奎萨尔】。",
+                "步骤 3：发动【赫焉龙】效果，从卡组将【导圣之圣女 库埃姆】或【黑衣龙】送去墓地。",
+                "步骤 4：结束阶段（End Phase）触发【赫圣女】墓地效果，回收至手牌。"
             ]
         }
-    }
-    
-    selected_deck = st.selectbox("选择卡组体系", list(COMBO_DATA.keys()))
-    combos = COMBO_DATA[selected_deck]
-    
-    for combo_name, steps in combos.items():
-        with st.expander(f"📌 {combo_name}", expanded=True):
-            for step in steps:
-                st.write(step)
+    ]
+
+    # 下拉框 + 文本输入双重快捷选择
+    quick_select = st.selectbox(
+        "快捷选择手牌动点：", 
+        ["烙印融合", "导圣者 阿鲁伯", "烙印开幕", "绝望之悲剧", "赫圣女 卡尔特西亚"]
+    )
+    user_input = st.text_input("或手动输入手牌卡名进行精准搜索：", value=quick_select)
+
+    query = user_input.strip()
+    matched = False
+
+    for combo in BRANDED_DATABASE:
+        if any(name.lower() in query.lower() for name in combo["card_names"]):
+            matched = True
+            st.markdown(f"### 📌 {combo['title']}")
+            st.caption(f"🔑 **手牌要求**：{combo['required_hand']}")
+            st.write("---")
+            
+            # 按顺序提示展开流程
+            for step in combo["steps"]:
+                st.info(step)
+
+    if not matched:
+        st.warning(f"未找到与 “{query}” 匹配的烙印展开链。请尝试输入：烙印融合、阿鲁伯、开幕、悲剧 或 赫圣女。")
